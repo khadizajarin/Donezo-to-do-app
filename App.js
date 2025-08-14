@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -69,7 +70,7 @@ export default function App() {
     const secondsUntilTrigger = Math.floor((triggerDate - now) / 1000);
 
     return await Notifications.scheduleNotificationAsync({
-      content: { title: '📝 It is time to', body: taskText, sound: true },
+      content: { title: '📝 Time to check your task!', body: taskText, sound: true },
       trigger: { seconds: secondsUntilTrigger, repeats: false },
     });
   };
@@ -122,50 +123,54 @@ export default function App() {
 
   const getCategoryStyle = (category) => {
     switch (category) {
-      case 'Every Day': return { backgroundColor: '#60a5fa',text:'#ffffff' };
-      case 'Today': return { backgroundColor: '#34d399', text:'#ffffff' };
-      case 'Someday': return { backgroundColor: '#fbbf24', text:'#ffffff' };
-      default: return { backgroundColor: '#d1d5db' };
+      case 'Every Day': return { backgroundColor: '#2563eb', textColor:'#ffffff' };
+      case 'Today': return { backgroundColor: '#10b981', textColor:'#ffffff' };
+      case 'Someday': return { backgroundColor: '#facc15', textColor:'#000000' };
+      default: return { backgroundColor: '#6b7280', textColor:'#ffffff' };
     }
   };
 
-  const renderTask = ({ item }) => (
-    <View style={styles.taskCard}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.taskName}>{item.name}</Text>
+  const renderTask = ({ item }) => {
+    const categoryStyle = getCategoryStyle(item.category);
+    return (
+      <View style={styles.taskCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.taskName}>{item.name}</Text>
 
-        <View style={styles.tagTimeRow}>
-          <View style={[styles.categoryTag, getCategoryStyle(item.category)]}>
-            <Text style={styles.categoryText}>{item.category}</Text>
+          <View style={styles.tagTimeRow}>
+            <View style={[styles.categoryTag, { backgroundColor: categoryStyle.backgroundColor }]}>
+              <Text style={[styles.categoryText, { color: categoryStyle.textColor }]}>{item.category}</Text>
+            </View>
+            {item.time && <Text style={styles.taskTime}>{formatTime(new Date(item.time))}</Text>}
           </View>
-          {item.time && <Text style={styles.taskTime}>{formatTime(new Date(item.time))}</Text>}
+
+          {item.category === 'Someday' && item.selectedDays && item.selectedDays.length > 0 && (
+            <View style={styles.daysRow}>
+              {item.selectedDays.map((d) => (
+                <View key={d} style={[styles.dayTag, { backgroundColor: '#374151' }]}>
+                  <Text style={[styles.dayTagText, { color: '#ffffff' }]}>{weekdays[d]}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
-        {item.category === 'Someday' && item.selectedDays && item.selectedDays.length > 0 && (
-          <View style={styles.daysRow}>
-            {item.selectedDays.map((d) => (
-              <View key={d} style={styles.dayTag}>
-                <Text style={styles.dayTagText}>{weekdays[d]}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+        <TouchableOpacity style={styles.deleteButton} onPress={() => deleteTask(item.id)}>
+          <Text style={styles.deleteButtonText}>🗑</Text>
+        </TouchableOpacity>
       </View>
-
-      <TouchableOpacity style={styles.deleteButton} onPress={() => deleteTask(item.id)}>
-        <Text style={styles.deleteButtonText}>🗑</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>🌟 My Little Reminders</Text>
+      <Text style={styles.header}>🌙 My Cozy Reminders</Text>
 
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
-          placeholder="What do you want to remember today?"
+          placeholder="What would you like to remember today?"
+          placeholderTextColor="#d1d5db"
           value={task}
           onChangeText={setTask}
         />
@@ -178,10 +183,10 @@ export default function App() {
         {['Every Day', 'Today', 'Someday'].map((cat) => (
           <TouchableOpacity
             key={cat}
-            style={[styles.categoryButton, selectedCategory === cat && { backgroundColor: '#3b82f6', color:'#ffffff' }]}
+            style={[styles.categoryButton, selectedCategory === cat && { backgroundColor: '#3b82f6' }]}
             onPress={() => setSelectedCategory(cat)}
           >
-            <Text style={styles.categoryButtonText}>{cat}</Text>
+            <Text style={[styles.categoryButtonText, selectedCategory === cat && { color: '#ffffff' }]}>{cat}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -191,10 +196,10 @@ export default function App() {
           {weekdays.map((day, index) => (
             <TouchableOpacity
               key={day}
-              style={[styles.dayButton, selectedDays.includes(index) && { backgroundColor: '#3b82f6', color:'#ffffff' }]}
+              style={[styles.dayButton, selectedDays.includes(index) && { backgroundColor: '#3b82f6' }]}
               onPress={() => toggleDay(index)}
             >
-              <Text style={styles.dayText}>{day}</Text>
+              <Text style={[styles.dayText, selectedDays.includes(index) && { color: '#ffffff' }]}>{day}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -202,7 +207,7 @@ export default function App() {
 
       <TouchableOpacity style={styles.timeButton} onPress={() => setShowTimePicker(true)}>
         <Text style={styles.timeButtonText}>
-          {time ? `Reminder set for: ${formatTime(time)}` : 'Choose a time to be reminded (optional)'}
+          {time ? `Reminder set for: ${formatTime(time)}` : 'Pick a time to gently remind yourself (optional)'}
         </Text>
       </TouchableOpacity>
 
@@ -230,29 +235,29 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#f3f4f6' },
-  header: { fontSize: 30, fontWeight: 'bold', marginTop: 50, marginBottom: 25, color: '#1f2937', textAlign: 'center' },
+  container: { flex: 1, padding: 20, backgroundColor: '#1f2937' }, // Dark background
+  header: { fontSize: 30, fontWeight: 'bold', marginTop: 50, marginBottom: 25, color: '#f3f4f6', textAlign: 'center' },
   inputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, width: '100%' },
-  input: { flex: 1, borderWidth: 1, borderColor: '#d1d5db', borderRadius: 15, padding: 14, backgroundColor: '#fff', fontSize: 16, color: '#111827' },
+  input: { flex: 1, borderWidth: 1, borderColor: '#374151', borderRadius: 15, padding: 14, backgroundColor: '#374151', fontSize: 16, color: '#f3f4f6' },
   addButton: { backgroundColor: '#3b82f6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 15, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
-  addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 24 },
+  addButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 24 },
   categoryContainer: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 },
-  categoryButton: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#e5e7eb' },
-  categoryButtonText: { fontSize: 15, fontWeight: '600', color: '#1f2937' },
+  categoryButton: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#374151' },
+  categoryButtonText: { fontSize: 15, fontWeight: '600', color: '#d1d5db' },
   daysContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12, justifyContent: 'center' },
-  dayButton: { padding: 8, margin: 4, borderRadius: 10, backgroundColor: '#e5e7eb' },
-  dayText: { fontWeight: '600', color: '#111827' },
-  timeButton: { backgroundColor: '#e0e7ff', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 15 },
-  timeButtonText: { fontSize: 16, fontWeight: '600', color: '#1f2937' },
-  taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, marginBottom: 12, borderRadius: 15, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
-  taskName: { fontSize: 16, fontWeight: '700', color: '#111827' },
+  dayButton: { padding: 8, margin: 4, borderRadius: 10, backgroundColor: '#374151' },
+  dayText: { fontWeight: '600', color: '#d1d5db' },
+  timeButton: { backgroundColor: '#2563eb', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 15 },
+  timeButtonText: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
+  taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', padding: 16, marginBottom: 12, borderRadius: 15, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
+  taskName: { fontSize: 16, fontWeight: '700', color: '#f3f4f6' },
   tagTimeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 12 },
-  taskTime: { fontSize: 14, color: '#6b7280', fontWeight: '500' },
+  taskTime: { fontSize: 14, color: '#d1d5db', fontWeight: '500' },
   daysRow: { flexDirection: 'row', marginTop: 8, flexWrap: 'wrap' },
-  dayTag: { backgroundColor: '#d1d5db', paddingHorizontal: 8, paddingVertical: 3,  borderRadius: 6, marginRight: 6, marginBottom: 6 },
-  dayTagText: { fontSize: 12, fontWeight: '700', color: '#ffffff' },
+  dayTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 6, marginBottom: 6 },
+  dayTagText: { fontSize: 12, fontWeight: '700' },
   categoryTag: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8 },
-  categoryText: { fontSize: 13, color: '#000', fontWeight: '700',color:'#ffffff' },
+  categoryText: { fontSize: 13, fontWeight: '700' },
   deleteButton: { marginLeft: 12, backgroundColor: '#f87171', padding: 10, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  deleteButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  deleteButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 16 },
 });
