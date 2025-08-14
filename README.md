@@ -1,5 +1,4 @@
 
-````markdown
 # 📅 Cozy Daily Reminder App
 
 A friendly and cozy daily reminder app built with **React Native** and **Expo**.  
