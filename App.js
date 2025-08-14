@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -10,10 +9,10 @@ const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // --- Notification Handler ---
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
+    shouldShowBanner: true, // ✅ replaces shouldShowAlert
+    shouldShowList: true,   // ✅ adds to show in notification list
     shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowList: true,
+    shouldSetBadge: false
   }),
 });
 
@@ -31,15 +30,20 @@ export default function App() {
   }, []);
 
   const registerForPushNotifications = async () => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') alert('Permission for notifications not granted!');
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.DEFAULT,
-      });
-    }
-  };
+  const { status } = await Notifications.requestPermissionsAsync();
+  if (status !== 'granted') alert('Permission for notifications not granted!');
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: true,
+      vibrationPattern: [0, 250, 250, 250], // optional
+      lightColor: '#FF231F7C', // optional
+    });
+  }
+};
+
 
   const loadTasks = async () => {
     try {
@@ -59,26 +63,50 @@ export default function App() {
     }
   };
 
-  const scheduleNotification = async (taskText, selectedTime) => {
+  const scheduleNotification = async (taskText, selectedTime, category, selectedDays) => {
     if (!selectedTime) return null;
 
     const now = new Date();
     let triggerDate = new Date(selectedTime);
     triggerDate.setSeconds(0);
+
     if (triggerDate <= now) triggerDate.setDate(triggerDate.getDate() + 1);
 
-    const secondsUntilTrigger = Math.floor((triggerDate - now) / 1000);
+    if (category === "Every Day") {
+      return await Notifications.scheduleNotificationAsync({
+        content: { title: '☀️ Hey there!',  body: taskText, sound: true },
+        trigger: { hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true }
+      });
+    }
 
-    return await Notifications.scheduleNotificationAsync({
-      content: { title: '📝 Time to check your task!', body: taskText, sound: true },
-      trigger: { seconds: secondsUntilTrigger, repeats: false },
-    });
+    if (category === "Today") {
+      return await Notifications.scheduleNotificationAsync({
+        content: { title: '🪴 Don’t forget, friend!',  body: taskText, sound: true },
+        trigger: triggerDate
+      });
+    }
+
+    if (category === "Someday" && selectedDays.length > 0) {
+      let ids = [];
+      for (let dayIndex of selectedDays) {
+        const id = await Notifications.scheduleNotificationAsync({
+          content: { title: '✨ Time for this!',  body: taskText, sound: true },
+          trigger: { weekday: dayIndex + 1, hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true }
+        });
+        ids.push(id);
+      }
+      return ids;
+    }
+
+    return null;
   };
 
   const addTask = async () => {
     if (!task.trim()) return;
 
-    const notificationId = time ? await scheduleNotification(task, time) : null;
+    const notificationId = time
+      ? await scheduleNotification(task, time, selectedCategory, selectedDays)
+      : null;
 
     const newTask = {
       id: Date.now().toString(),
@@ -99,8 +127,16 @@ export default function App() {
 
   const deleteTask = async (id) => {
     const taskToDelete = tasks.find((t) => t.id === id);
-    if (taskToDelete?.notificationId)
-      await Notifications.cancelScheduledNotificationAsync(taskToDelete.notificationId);
+
+    if (taskToDelete?.notificationId) {
+      if (Array.isArray(taskToDelete.notificationId)) {
+        for (let notifId of taskToDelete.notificationId) {
+          await Notifications.cancelScheduledNotificationAsync(notifId);
+        }
+      } else {
+        await Notifications.cancelScheduledNotificationAsync(taskToDelete.notificationId);
+      }
+    }
 
     const updatedTasks = (tasks || []).filter((t) => t.id !== id);
     await saveTasks(updatedTasks);
@@ -117,16 +153,19 @@ export default function App() {
   };
 
   const toggleDay = (index) => {
-    if (selectedDays.includes(index)) setSelectedDays(selectedDays.filter((d) => d !== index));
-    else setSelectedDays([...selectedDays, index]);
+    if (selectedDays.includes(index)) {
+      setSelectedDays(selectedDays.filter((d) => d !== index));
+    } else {
+      setSelectedDays([...selectedDays, index]);
+    }
   };
 
   const getCategoryStyle = (category) => {
     switch (category) {
-      case 'Every Day': return { backgroundColor: '#2563eb', textColor:'#ffffff' };
-      case 'Today': return { backgroundColor: '#10b981', textColor:'#ffffff' };
-      case 'Someday': return { backgroundColor: '#facc15', textColor:'#000000' };
-      default: return { backgroundColor: '#6b7280', textColor:'#ffffff' };
+      case 'Every Day': return { backgroundColor: '#2563eb', textColor: '#ffffff' };
+      case 'Today': return { backgroundColor: '#10b981', textColor: '#ffffff' };
+      case 'Someday': return { backgroundColor: '#facc15', textColor: '#000000' };
+      default: return { backgroundColor: '#6b7280', textColor: '#ffffff' };
     }
   };
 
@@ -235,7 +274,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#1f2937' }, // Dark background
+  container: { flex: 1, padding: 20, backgroundColor: '#1f2937' },
   header: { fontSize: 30, fontWeight: 'bold', marginTop: 50, marginBottom: 25, color: '#f3f4f6', textAlign: 'center' },
   inputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, width: '100%' },
   input: { flex: 1, borderWidth: 1, borderColor: '#374151', borderRadius: 15, padding: 14, backgroundColor: '#374151', fontSize: 16, color: '#f3f4f6' },
@@ -249,7 +288,7 @@ const styles = StyleSheet.create({
   dayText: { fontWeight: '600', color: '#d1d5db' },
   timeButton: { backgroundColor: '#2563eb', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 15 },
   timeButtonText: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
-  taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', padding: 16, marginBottom: 12, borderRadius: 15, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
+  taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', padding: 16, marginBottom: 12, borderRadius: 15, elevation: 3 },
   taskName: { fontSize: 16, fontWeight: '700', color: '#f3f4f6' },
   tagTimeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 12 },
   taskTime: { fontSize: 14, color: '#d1d5db', fontWeight: '500' },
