@@ -1,5 +1,3 @@
-Here’s a **`README.md`** you can use for your cozy notification React Native app built with Expo.
-I’ve kept it clear so others can understand how to install, run, and build it.
 
 ````markdown
 # 📅 Cozy Daily Reminder App
@@ -114,6 +112,4 @@ This project is licensed under the MIT License — feel free to use and modify i
 ---
 
 💌 Made with care to make your reminders feel like a friend’s message, not an alarm clock.
-
-```
 
