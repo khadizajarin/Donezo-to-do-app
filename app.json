@@ -4,7 +4,7 @@
     "slug": "Donezo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -28,7 +28,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "d09fbb42-338d-454f-81bc-297fcac3e44d"
+        "projectId": "9257954d-ad0b-4956-bf2c-887796fe21bb"
       }
     }
   }

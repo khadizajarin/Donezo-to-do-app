@@ -9,10 +9,10 @@ const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // --- Notification Handler ---
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true, // ✅ replaces shouldShowAlert
-    shouldShowList: true,   // ✅ adds to show in notification list
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
-    shouldSetBadge: false
+    shouldSetBadge: false,
   }),
 });
 
@@ -30,20 +30,19 @@ export default function App() {
   }, []);
 
   const registerForPushNotifications = async () => {
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== 'granted') alert('Permission for notifications not granted!');
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') alert('Permission for notifications not granted!');
 
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: true,
-      vibrationPattern: [0, 250, 250, 250], // optional
-      lightColor: '#FF231F7C', // optional
-    });
-  }
-};
-
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: true,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+      });
+    }
+  };
 
   const loadTasks = async () => {
     try {
@@ -68,30 +67,39 @@ export default function App() {
 
     const now = new Date();
     let triggerDate = new Date(selectedTime);
-    triggerDate.setSeconds(0);
 
-    if (triggerDate <= now) triggerDate.setDate(triggerDate.getDate() + 1);
+    // Normalize date
+    triggerDate.setSeconds(0);
+    triggerDate.setMilliseconds(0);
+
+    if (category === "Today" && triggerDate <= now) {
+      triggerDate.setDate(triggerDate.getDate() + 1);
+    }
 
     if (category === "Every Day") {
       return await Notifications.scheduleNotificationAsync({
-        content: { title: '☀️ Hey there!',  body: taskText, sound: true },
-        trigger: { hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true }
+        content: { title: '☀️ Hey there!', body: taskText, sound: true },
+        trigger: {
+          hour: triggerDate.getHours(),
+          minute: triggerDate.getMinutes(),
+          repeats: true,
+        },
       });
     }
 
     if (category === "Today") {
       return await Notifications.scheduleNotificationAsync({
-        content: { title: '🪴 Don’t forget, friend!',  body: taskText, sound: true },
-        trigger: triggerDate
+        content: { title: '🪴 Don’t forget, friend!', body: taskText, sound: true },
+        trigger: triggerDate,
       });
     }
 
     if (category === "Someday" && selectedDays.length > 0) {
-      let ids = [];
+      const ids = [];
       for (let dayIndex of selectedDays) {
         const id = await Notifications.scheduleNotificationAsync({
-          content: { title: '✨ Time for this!',  body: taskText, sound: true },
-          trigger: { weekday: dayIndex + 1, hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true }
+          content: { title: '✨ Time for this!', body: taskText, sound: true },
+          trigger: { weekday: dayIndex + 1, hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true },
         });
         ids.push(id);
       }
@@ -175,14 +183,12 @@ export default function App() {
       <View style={styles.taskCard}>
         <View style={{ flex: 1 }}>
           <Text style={styles.taskName}>{item.name}</Text>
-
           <View style={styles.tagTimeRow}>
             <View style={[styles.categoryTag, { backgroundColor: categoryStyle.backgroundColor }]}>
               <Text style={[styles.categoryText, { color: categoryStyle.textColor }]}>{item.category}</Text>
             </View>
             {item.time && <Text style={styles.taskTime}>{formatTime(new Date(item.time))}</Text>}
           </View>
-
           {item.category === 'Someday' && item.selectedDays && item.selectedDays.length > 0 && (
             <View style={styles.daysRow}>
               {item.selectedDays.map((d) => (
@@ -193,7 +199,6 @@ export default function App() {
             </View>
           )}
         </View>
-
         <TouchableOpacity style={styles.deleteButton} onPress={() => deleteTask(item.id)}>
           <Text style={styles.deleteButtonText}>🗑</Text>
         </TouchableOpacity>
