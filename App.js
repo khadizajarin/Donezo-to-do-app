@@ -1,12 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  Platform,
+  StatusBar,
+  Animated,
+  Dimensions,
+} from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// --- Notification Handler ---
+const CATEGORIES = [
+  { label: 'Every Day', emoji: '🔁', color: '#818cf8', bg: '#1e1b4b' },
+  { label: 'Today',     emoji: '⚡', color: '#34d399', bg: '#064e3b' },
+  { label: 'Someday',   emoji: '🌸', color: '#f472b6', bg: '#500724' },
+];
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -16,6 +32,63 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function formatTime(raw) {
+  if (!raw) return '';
+  const d = typeof raw === 'string' ? new Date(raw) : raw;
+  let h = d.getHours(), m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m < 10 ? '0' + m : m} ${ampm}`;
+}
+
+// ── Animated Task Card ─────────────────────────────────────────────────────────
+function TaskCard({ item, onDelete }) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(24)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const cat = CATEGORIES.find((c) => c.label === item.category) || CATEGORIES[0];
+
+  return (
+    <Animated.View style={[styles.taskCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      <View style={[styles.taskAccentBar, { backgroundColor: cat.color }]} />
+      <View style={{ flex: 1, paddingLeft: 14 }}>
+        <Text style={styles.taskName}>{item.name}</Text>
+        <View style={styles.tagRow}>
+          <View style={[styles.catPill, { backgroundColor: cat.bg, borderColor: cat.color + '55' }]}>
+            <Text style={[styles.catPillText, { color: cat.color }]}>{cat.emoji} {item.category}</Text>
+          </View>
+          {item.time && (
+            <View style={styles.timePill}>
+              <Text style={styles.timePillText}>🕐 {formatTime(item.time)}</Text>
+            </View>
+          )}
+        </View>
+        {item.category === 'Someday' && item.selectedDays?.length > 0 && (
+          <View style={styles.daysRow}>
+            {item.selectedDays.map((d) => (
+              <View key={d} style={[styles.miniDay, { borderColor: cat.color + '66' }]}>
+                <Text style={[styles.miniDayText, { color: cat.color }]}>{weekdays[d]}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+      <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(item.id)} activeOpacity={0.7}>
+        <Text style={styles.deleteBtnText}>✕</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [task, setTask] = useState('');
   const [tasks, setTasks] = useState([]);
@@ -23,285 +96,420 @@ export default function App() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('Today');
   const [selectedDays, setSelectedDays] = useState([]);
+  const headerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadTasks();
     registerForPushNotifications();
+    Animated.timing(headerAnim, { toValue: 1, duration: 700, useNativeDriver: true }).start();
   }, []);
 
   const registerForPushNotifications = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') alert('Permission for notifications not granted!');
-
+    if (status !== 'granted') return;
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
         importance: Notifications.AndroidImportance.HIGH,
-        sound: true,
+        sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
       });
     }
   };
 
   const loadTasks = async () => {
     try {
-      const storedTasks = await AsyncStorage.getItem('tasks');
-      if (storedTasks) setTasks(JSON.parse(storedTasks));
-    } catch (error) {
-      console.log(error);
-    }
+      const s = await AsyncStorage.getItem('tasks');
+      if (s) setTasks(JSON.parse(s));
+    } catch (e) { console.log(e); }
   };
 
-  const saveTasks = async (newTasks) => {
+  const saveTasks = async (t) => {
     try {
-      await AsyncStorage.setItem('tasks', JSON.stringify(newTasks));
-      setTasks(newTasks);
-    } catch (error) {
-      console.log(error);
-    }
+      await AsyncStorage.setItem('tasks', JSON.stringify(t));
+      setTasks(t);
+    } catch (e) { console.log(e); }
   };
 
-  const scheduleNotification = async (taskText, selectedTime, category, selectedDays) => {
-    if (!selectedTime) return null;
-
+  const scheduleNotification = async (text, t, category, days) => {
+    if (!t) return null;
     const now = new Date();
-    let triggerDate = new Date(selectedTime);
+    let trigger = new Date(t);
+    trigger.setSeconds(0); trigger.setMilliseconds(0);
 
-    // Normalize date
-    triggerDate.setSeconds(0);
-    triggerDate.setMilliseconds(0);
-
-    if (category === "Today" && triggerDate <= now) {
-      triggerDate.setDate(triggerDate.getDate() + 1);
-    }
-
-    if (category === "Every Day") {
-      return await Notifications.scheduleNotificationAsync({
-        content: { title: '☀️ Hey there!', body: taskText, sound: true },
-        trigger: {
-          hour: triggerDate.getHours(),
-          minute: triggerDate.getMinutes(),
-          repeats: true,
-        },
+    if (category === 'Every Day') {
+      return Notifications.scheduleNotificationAsync({
+        content: { title: '☀️ Hey there!', body: text, sound: 'default' },
+        trigger: { hour: trigger.getHours(), minute: trigger.getMinutes(), repeats: true },
       });
     }
-
-    if (category === "Today") {
-      return await Notifications.scheduleNotificationAsync({
-        content: { title: '🪴 Don’t forget, friend!', body: taskText, sound: true },
-        trigger: triggerDate,
+    if (category === 'Today') {
+      if (trigger <= now) trigger.setDate(trigger.getDate() + 1);
+      return Notifications.scheduleNotificationAsync({
+        content: { title: "🪴 Don't forget!", body: text, sound: 'default' },
+        trigger: { date: trigger },
       });
     }
-
-    if (category === "Someday" && selectedDays.length > 0) {
+    if (category === 'Someday' && days.length > 0) {
       const ids = [];
-      for (let dayIndex of selectedDays) {
+      for (const d of days) {
         const id = await Notifications.scheduleNotificationAsync({
-          content: { title: '✨ Time for this!', body: taskText, sound: true },
-          trigger: { weekday: dayIndex + 1, hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true },
+          content: { title: '✨ Time for this!', body: text, sound: 'default' },
+          trigger: { weekday: d + 1, hour: trigger.getHours(), minute: trigger.getMinutes(), repeats: true },
         });
         ids.push(id);
       }
       return ids;
     }
-
     return null;
   };
 
   const addTask = async () => {
     if (!task.trim()) return;
-
     const notificationId = time
       ? await scheduleNotification(task, time, selectedCategory, selectedDays)
       : null;
-
     const newTask = {
       id: Date.now().toString(),
       name: task,
-      time,
+      time: time ? time.toISOString() : null,
       category: selectedCategory,
       selectedDays: selectedCategory === 'Someday' ? selectedDays : [],
       notificationId,
     };
-
-    const updatedTasks = [...(tasks || []), newTask];
-    await saveTasks(updatedTasks);
-
-    setTask('');
-    setTime(null);
-    setSelectedDays([]);
+    await saveTasks([...(tasks || []), newTask]);
+    setTask(''); setTime(null); setSelectedDays([]);
   };
 
   const deleteTask = async (id) => {
-    const taskToDelete = tasks.find((t) => t.id === id);
-
-    if (taskToDelete?.notificationId) {
-      if (Array.isArray(taskToDelete.notificationId)) {
-        for (let notifId of taskToDelete.notificationId) {
-          await Notifications.cancelScheduledNotificationAsync(notifId);
-        }
-      } else {
-        await Notifications.cancelScheduledNotificationAsync(taskToDelete.notificationId);
-      }
+    const t = tasks.find((x) => x.id === id);
+    if (t?.notificationId) {
+      const ids = Array.isArray(t.notificationId) ? t.notificationId : [t.notificationId];
+      for (const nid of ids) await Notifications.cancelScheduledNotificationAsync(nid);
     }
-
-    const updatedTasks = (tasks || []).filter((t) => t.id !== id);
-    await saveTasks(updatedTasks);
+    await saveTasks(tasks.filter((x) => x.id !== id));
   };
 
-  const formatTime = (date) => {
-    if (!date) return '';
-    let hours = date.getHours();
-    let minutes = date.getMinutes();
-    let ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12;
-    minutes = minutes < 10 ? '0' + minutes : minutes;
-    return `${hours}:${minutes} ${ampm}`;
-  };
+  const toggleDay = (i) =>
+    setSelectedDays((prev) => prev.includes(i) ? prev.filter((d) => d !== i) : [...prev, i]);
 
-  const toggleDay = (index) => {
-    if (selectedDays.includes(index)) {
-      setSelectedDays(selectedDays.filter((d) => d !== index));
-    } else {
-      setSelectedDays([...selectedDays, index]);
-    }
-  };
-
-  const getCategoryStyle = (category) => {
-    switch (category) {
-      case 'Every Day': return { backgroundColor: '#2563eb', textColor: '#ffffff' };
-      case 'Today': return { backgroundColor: '#10b981', textColor: '#ffffff' };
-      case 'Someday': return { backgroundColor: '#facc15', textColor: '#000000' };
-      default: return { backgroundColor: '#6b7280', textColor: '#ffffff' };
-    }
-  };
-
-  const renderTask = ({ item }) => {
-    const categoryStyle = getCategoryStyle(item.category);
-    return (
-      <View style={styles.taskCard}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.taskName}>{item.name}</Text>
-          <View style={styles.tagTimeRow}>
-            <View style={[styles.categoryTag, { backgroundColor: categoryStyle.backgroundColor }]}>
-              <Text style={[styles.categoryText, { color: categoryStyle.textColor }]}>{item.category}</Text>
-            </View>
-            {item.time && <Text style={styles.taskTime}>{formatTime(new Date(item.time))}</Text>}
-          </View>
-          {item.category === 'Someday' && item.selectedDays && item.selectedDays.length > 0 && (
-            <View style={styles.daysRow}>
-              {item.selectedDays.map((d) => (
-                <View key={d} style={[styles.dayTag, { backgroundColor: '#374151' }]}>
-                  <Text style={[styles.dayTagText, { color: '#ffffff' }]}>{weekdays[d]}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-        <TouchableOpacity style={styles.deleteButton} onPress={() => deleteTask(item.id)}>
-          <Text style={styles.deleteButtonText}>🗑</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  const activeCat = CATEGORIES.find((c) => c.label === selectedCategory);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>🌙 My Cozy Reminders</Text>
+      <StatusBar barStyle="light-content" backgroundColor="#0f0f1a" />
 
-      <View style={styles.inputRow}>
+      {/* ── Header ── */}
+      <Animated.View style={[
+        styles.header,
+        {
+          opacity: headerAnim,
+          transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
+        },
+      ]}>
+        <Text style={styles.headerEmoji}>🌙</Text>
+        <Text style={styles.headerTitle}>Donezo</Text>
+        <Text style={styles.headerSub}>your cozy reminder space</Text>
+      </Animated.View>
+
+      {/* ── Input Row ── */}
+      <View style={styles.inputCard}>
         <TextInput
           style={styles.input}
-          placeholder="What would you like to remember today?"
-          placeholderTextColor="#d1d5db"
+          placeholder="What to remember today?"
+          placeholderTextColor="#3d3d52"
           value={task}
           onChangeText={setTask}
+          onSubmitEditing={addTask}
+          returnKeyType="done"
         />
-        <TouchableOpacity style={styles.addButton} onPress={addTask}>
-          <Text style={styles.addButtonText}>+</Text>
+        <TouchableOpacity
+          style={[styles.addBtn, { backgroundColor: activeCat.color }]}
+          onPress={addTask}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.categoryContainer}>
-        {['Every Day', 'Today', 'Someday'].map((cat) => (
+      {/* ── Category Pills ── */}
+      <View style={styles.catRow}>
+        {CATEGORIES.map((cat) => (
           <TouchableOpacity
-            key={cat}
-            style={[styles.categoryButton, selectedCategory === cat && { backgroundColor: '#3b82f6' }]}
-            onPress={() => setSelectedCategory(cat)}
+            key={cat.label}
+            style={[
+              styles.catBtn,
+              selectedCategory === cat.label && {
+                backgroundColor: cat.bg,
+                borderColor: cat.color,
+              },
+            ]}
+            onPress={() => setSelectedCategory(cat.label)}
+            activeOpacity={0.75}
           >
-            <Text style={[styles.categoryButtonText, selectedCategory === cat && { color: '#ffffff' }]}>{cat}</Text>
+            <Text style={[
+              styles.catBtnText,
+              selectedCategory === cat.label && { color: cat.color },
+            ]}>
+              {cat.emoji} {cat.label}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
 
+      {/* ── Weekday Picker ── */}
       {selectedCategory === 'Someday' && (
-        <View style={styles.daysContainer}>
-          {weekdays.map((day, index) => (
+        <View style={styles.weekRow}>
+          {weekdays.map((day, i) => (
             <TouchableOpacity
               key={day}
-              style={[styles.dayButton, selectedDays.includes(index) && { backgroundColor: '#3b82f6' }]}
-              onPress={() => toggleDay(index)}
+              style={[
+                styles.weekBtn,
+                selectedDays.includes(i) && { backgroundColor: '#500724', borderColor: '#f472b6' },
+              ]}
+              onPress={() => toggleDay(i)}
+              activeOpacity={0.75}
             >
-              <Text style={[styles.dayText, selectedDays.includes(index) && { color: '#ffffff' }]}>{day}</Text>
+              <Text style={[
+                styles.weekBtnText,
+                selectedDays.includes(i) && { color: '#f472b6' },
+              ]}>
+                {day}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
       )}
 
-      <TouchableOpacity style={styles.timeButton} onPress={() => setShowTimePicker(true)}>
-        <Text style={styles.timeButtonText}>
-          {time ? `Reminder set for: ${formatTime(time)}` : 'Pick a time to gently remind yourself (optional)'}
+      {/* ── Time Button ── */}
+      <TouchableOpacity
+        style={[styles.timeBtn, time && { borderColor: activeCat.color + '88' }]}
+        onPress={() => setShowTimePicker(true)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.timeBtnIcon}>⏰</Text>
+        <Text style={[styles.timeBtnText, time && { color: activeCat.color }]}>
+          {time ? `Reminder at ${formatTime(time)}` : 'Set a reminder time (optional)'}
         </Text>
+        {time && (
+          <TouchableOpacity onPress={() => setTime(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={{ color: '#475569', fontSize: 15 }}>✕</Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
 
       {showTimePicker && (
         <DateTimePicker
           value={time || new Date()}
           mode="time"
-          onChange={(event, selectedDate) => {
-            setShowTimePicker(false);
-            if (selectedDate) setTime(selectedDate);
-          }}
+          onChange={(_, d) => { setShowTimePicker(false); if (d) setTime(d); }}
         />
       )}
 
-      {tasks && tasks.length > 0 && (
-        <FlatList
-          data={tasks}
-          keyExtractor={(item) => item.id}
-          renderItem={renderTask}
-          style={{ marginTop: 20 }}
-        />
+      {/* ── Divider ── */}
+      {tasks.length > 0 && (
+        <View style={styles.dividerRow}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>{tasks.length} reminder{tasks.length !== 1 ? 's' : ''}</Text>
+          <View style={styles.divider} />
+        </View>
       )}
+
+      {/* ── Task List ── */}
+      <FlatList
+        data={tasks}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <TaskCard item={item} onDelete={deleteTask} />}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>✨</Text>
+            <Text style={styles.emptyText}>Nothing here yet.{'\n'}Add your first reminder!</Text>
+          </View>
+        }
+      />
     </View>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#1f2937' },
-  header: { fontSize: 30, fontWeight: 'bold', marginTop: 50, marginBottom: 25, color: '#f3f4f6', textAlign: 'center' },
-  inputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, width: '100%' },
-  input: { flex: 1, borderWidth: 1, borderColor: '#374151', borderRadius: 15, padding: 14, backgroundColor: '#374151', fontSize: 16, color: '#f3f4f6' },
-  addButton: { backgroundColor: '#3b82f6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 15, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
-  addButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 24 },
-  categoryContainer: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 },
-  categoryButton: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#374151' },
-  categoryButtonText: { fontSize: 15, fontWeight: '600', color: '#d1d5db' },
-  daysContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12, justifyContent: 'center' },
-  dayButton: { padding: 8, margin: 4, borderRadius: 10, backgroundColor: '#374151' },
-  dayText: { fontWeight: '600', color: '#d1d5db' },
-  timeButton: { backgroundColor: '#2563eb', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 15 },
-  timeButtonText: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
-  taskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', padding: 16, marginBottom: 12, borderRadius: 15, elevation: 3 },
-  taskName: { fontSize: 16, fontWeight: '700', color: '#f3f4f6' },
-  tagTimeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 12 },
-  taskTime: { fontSize: 14, color: '#d1d5db', fontWeight: '500' },
-  daysRow: { flexDirection: 'row', marginTop: 8, flexWrap: 'wrap' },
-  dayTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 6, marginBottom: 6 },
-  dayTagText: { fontSize: 12, fontWeight: '700' },
-  categoryTag: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8 },
-  categoryText: { fontSize: 13, fontWeight: '700' },
-  deleteButton: { marginLeft: 12, backgroundColor: '#f87171', padding: 10, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  deleteButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: '#0f0f1a',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 12 : 54,
+  },
+
+  // Header
+  header: { alignItems: 'center', marginBottom: 26 },
+  headerEmoji: { fontSize: 38, marginBottom: 4 },
+  headerTitle: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#f1f5f9',
+    letterSpacing: -1,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: '#334155',
+    marginTop: 3,
+    letterSpacing: 0.4,
+  },
+
+  // Input
+  inputCard: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 10 },
+  input: {
+    flex: 1,
+    backgroundColor: '#161624',
+    borderWidth: 1,
+    borderColor: '#1e1e30',
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+    fontSize: 15,
+    color: '#e2e8f0',
+  },
+  addBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtnText: { fontSize: 30, fontWeight: '300', color: '#fff', lineHeight: 34 },
+
+  // Categories
+  catRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  catBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#1e1e30',
+    backgroundColor: '#161624',
+    alignItems: 'center',
+  },
+  catBtnText: { fontSize: 12, fontWeight: '700', color: '#334155' },
+
+  // Weekdays
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  weekBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1e1e30',
+    backgroundColor: '#161624',
+  },
+  weekBtnText: { fontSize: 12, fontWeight: '700', color: '#334155' },
+
+  // Time button
+  timeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161624',
+    borderWidth: 1,
+    borderColor: '#1e1e30',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    marginBottom: 20,
+    gap: 10,
+  },
+  timeBtnIcon: { fontSize: 16 },
+  timeBtnText: { flex: 1, fontSize: 14, fontWeight: '500', color: '#334155' },
+
+  // Divider
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
+  divider: { flex: 1, height: 1, backgroundColor: '#161624' },
+  dividerText: {
+    fontSize: 11,
+    color: '#334155',
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  // Task card
+  taskCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161624',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#1e1e30',
+    marginBottom: 10,
+    overflow: 'hidden',
+    paddingVertical: 14,
+    paddingRight: 14,
+  },
+  taskAccentBar: {
+    width: 4,
+    alignSelf: 'stretch',
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+  },
+  taskName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#e2e8f0',
+    marginBottom: 8,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  catPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  catPillText: { fontSize: 12, fontWeight: '700' },
+  timePill: {
+    backgroundColor: '#1a1a2e',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  timePillText: { fontSize: 12, color: '#475569', fontWeight: '500' },
+  daysRow: { flexDirection: 'row', marginTop: 8, gap: 5, flexWrap: 'wrap' },
+  miniDay: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  miniDayText: { fontSize: 11, fontWeight: '700' },
+  deleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#2d1b1b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  deleteBtnText: { color: '#f87171', fontSize: 12, fontWeight: '700' },
+
+  // Empty state
+  emptyState: { alignItems: 'center', paddingTop: 60 },
+  emptyEmoji: { fontSize: 52, marginBottom: 16 },
+  emptyText: {
+    fontSize: 15,
+    color: '#1e293b',
+    textAlign: 'center',
+    lineHeight: 24,
+    fontWeight: '500',
+  },
 });
