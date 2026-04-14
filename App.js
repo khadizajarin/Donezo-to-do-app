@@ -119,20 +119,35 @@ export default function App() {
     }
   };
 
-  const showBatteryOptimizationPrompt = () => {
+  // Battery optimization prompt - shows ONLY ONCE
+  const showBatteryOptimizationPrompt = async () => {
     if (Platform.OS !== 'android') return;
 
-    Alert.alert(
-      "Daily Reminders",
-      "For 'Every Day' reminders to appear at the exact time every day, please disable battery optimization for Donezo.\n\nSettings → Apps → Donezo → Battery → Unrestricted",
-      [
-        { text: "Later" },
-        {
-          text: "Open Settings",
-          onPress: () => Linking.openSettings(),
-        },
-      ]
-    );
+    try {
+      const hasSeenPrompt = await AsyncStorage.getItem('hasSeenBatteryPrompt');
+      if (hasSeenPrompt === 'true') return;
+
+      Alert.alert(
+        "Important for Daily Reminders",
+        "For 'Every Day' reminders to appear at the exact time every day, please disable battery optimization for Donezo.\n\n" +
+        "Go to: Settings → Apps → Donezo → Battery → Unrestricted",
+        [
+          { text: "Later" },
+          {
+            text: "Open Settings",
+            onPress: async () => {
+              await AsyncStorage.setItem('hasSeenBatteryPrompt', 'true');
+              Linking.openSettings();
+            },
+          },
+        ]
+      );
+
+      // Mark as seen even if "Later" is pressed
+      await AsyncStorage.setItem('hasSeenBatteryPrompt', 'true');
+    } catch (e) {
+      console.log("Battery prompt error:", e);
+    }
   };
 
   const loadTasks = async () => {
@@ -242,9 +257,9 @@ export default function App() {
 
     await saveTasks([...(tasks || []), newTask]);
 
-    // Show battery prompt only for Every Day tasks with time
+    // Show battery prompt only once when user adds "Every Day" task with time
     if (selectedCategory === 'Every Day' && time) {
-      setTimeout(showBatteryOptimizationPrompt, 1000);
+      setTimeout(showBatteryOptimizationPrompt, 800);
     }
 
     setTask('');
@@ -332,7 +347,7 @@ export default function App() {
         ))}
       </View>
 
-      {/* Weekday Picker for Someday */}
+      {/* Weekday Picker */}
       {selectedCategory === 'Someday' && (
         <View style={styles.weekRow}>
           {weekdays.map((day, i) => (
