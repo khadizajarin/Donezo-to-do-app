@@ -119,7 +119,6 @@ export default function App() {
     }
   };
 
-  // Battery optimization prompt - shows ONLY ONCE
   const showBatteryOptimizationPrompt = async () => {
     if (Platform.OS !== 'android') return;
 
@@ -143,7 +142,6 @@ export default function App() {
         ]
       );
 
-      // Mark as seen even if "Later" is pressed
       await AsyncStorage.setItem('hasSeenBatteryPrompt', 'true');
     } catch (e) {
       console.log("Battery prompt error:", e);
@@ -160,9 +158,9 @@ export default function App() {
   };
 
   const saveTasks = async (t) => {
+    setTasks(t); 
     try {
       await AsyncStorage.setItem('tasks', JSON.stringify(t));
-      setTasks(t);
     } catch (e) {
       console.log(e);
     }
@@ -180,6 +178,7 @@ export default function App() {
     const now = new Date();
 
     if (category === 'Every Day') {
+      // Keep this as it was working fine
       return await Notifications.scheduleNotificationAsync({
         content: {
           title: '☀️ Hey there!',
@@ -198,6 +197,7 @@ export default function App() {
 
     if (category === 'Today') {
       let triggerDate = new Date(triggerTime);
+      // If the selected time has already passed today, schedule for tomorrow
       if (triggerDate <= now) {
         triggerDate.setDate(triggerDate.getDate() + 1);
       }
@@ -225,7 +225,7 @@ export default function App() {
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-            weekday: d + 1,
+            weekday: d + 1,           // 1 = Sunday, 7 = Saturday
             hour: hours,
             minute: minutes,
             repeats: true,
@@ -257,7 +257,6 @@ export default function App() {
 
     await saveTasks([...(tasks || []), newTask]);
 
-    // Show battery prompt only once when user adds "Every Day" task with time
     if (selectedCategory === 'Every Day' && time) {
       setTimeout(showBatteryOptimizationPrompt, 800);
     }
@@ -267,6 +266,8 @@ export default function App() {
     setSelectedDays([]);
   };
 
+
+  //delete tasks
   const deleteTask = async (id) => {
     const t = tasks.find((x) => x.id === id);
     if (t?.notificationId) {
@@ -275,7 +276,11 @@ export default function App() {
         await Notifications.cancelScheduledNotificationAsync(nid);
       }
     }
-    await saveTasks(tasks.filter((x) => x.id !== id));
+    setTasks((prev) => {
+      const updated = prev.filter((x) => x.id !== id);
+      AsyncStorage.setItem('tasks', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const toggleDay = (i) =>
@@ -307,7 +312,7 @@ export default function App() {
         <TextInput
           style={styles.input}
           placeholder="What to remember today?"
-          placeholderTextColor="#3d3d52"
+          placeholderTextColor="#6b7280"
           value={task}
           onChangeText={setTask}
           onSubmitEditing={addTask}
@@ -347,7 +352,7 @@ export default function App() {
         ))}
       </View>
 
-      {/* Weekday Picker */}
+      {/* Weekday Picker for Someday */}
       {selectedCategory === 'Someday' && (
         <View style={styles.weekRow}>
           {weekdays.map((day, i) => (
@@ -383,7 +388,7 @@ export default function App() {
         </Text>
         {time && (
           <TouchableOpacity onPress={() => setTime(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={{ color: '#475569', fontSize: 15 }}>✕</Text>
+            <Text style={{ color: '#94a3b8', fontSize: 15 }}>✕</Text>
           </TouchableOpacity>
         )}
       </TouchableOpacity>
@@ -444,7 +449,7 @@ const styles = StyleSheet.create({
   },
   headerSub: {
     fontSize: 13,
-    color: '#334155',
+    color: '#94a3b8',           // Lighter
     marginTop: 3,
     letterSpacing: 0.4,
   },
@@ -459,7 +464,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 15,
     fontSize: 15,
-    color: '#e2e8f0',
+    color: '#e2e8f0',           // Light text
   },
   addBtn: {
     width: 52,
@@ -480,7 +485,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#161624',
     alignItems: 'center',
   },
-  catBtnText: { fontSize: 12, fontWeight: '700', color: '#334155' },
+  catBtnText: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#94a3b8'        // Lighter inactive text
+  },
 
   weekRow: {
     flexDirection: 'row',
@@ -497,7 +506,11 @@ const styles = StyleSheet.create({
     borderColor: '#1e1e30',
     backgroundColor: '#161624',
   },
-  weekBtnText: { fontSize: 12, fontWeight: '700', color: '#334155' },
+  weekBtnText: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#94a3b8' 
+  },
 
   timeBtn: {
     flexDirection: 'row',
@@ -511,14 +524,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 10,
   },
-  timeBtnIcon: { fontSize: 16 },
-  timeBtnText: { flex: 1, fontSize: 14, fontWeight: '500', color: '#334155' },
+  timeBtnIcon: { fontSize: 16, color: '#e2e8f0' },
+  timeBtnText: { 
+    flex: 1, 
+    fontSize: 14, 
+    fontWeight: '500', 
+    color: '#94a3b8'          // Lighter
+  },
 
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
-  divider: { flex: 1, height: 1, backgroundColor: '#161624' },
+  divider: { flex: 1, height: 1, backgroundColor: '#1e1e30' },
   dividerText: {
     fontSize: 11,
-    color: '#334155',
+    color: '#94a3b8',
     fontWeight: '700',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -545,7 +563,7 @@ const styles = StyleSheet.create({
   taskName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#e2e8f0',
+    color: '#f1f5f9',           // Bright white
     marginBottom: 8,
   },
   tagRow: {
@@ -567,7 +585,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  timePillText: { fontSize: 12, color: '#475569', fontWeight: '500' },
+  timePillText: { 
+    fontSize: 12, 
+    color: '#cbd5e1',           // Lighter
+    fontWeight: '500' 
+  },
   daysRow: { flexDirection: 'row', marginTop: 8, gap: 5, flexWrap: 'wrap' },
   miniDay: {
     paddingHorizontal: 8,
@@ -591,7 +613,7 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 52, marginBottom: 16 },
   emptyText: {
     fontSize: 15,
-    color: '#1e293b',
+    color: '#94a3b8',           // Lighter
     textAlign: 'center',
     lineHeight: 24,
     fontWeight: '500',
