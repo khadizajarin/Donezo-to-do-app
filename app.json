@@ -44,7 +44,7 @@
           "icon": "./assets/adaptive-icon.png",
           "color": "#1f2937",
           "defaultChannel": "default",
-          "sounds": ["./assets/notification.mp3"],
+          "sounds": ["./assets/notification.mp3"]
         }
       ]
     ],
