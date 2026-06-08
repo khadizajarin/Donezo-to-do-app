@@ -108,13 +108,14 @@ export default function App() {
 
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'Daily Reminders',
+        name: 'Donezo Reminders',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
+        sound: 'notification.mp3',
         vibrationPattern: [0, 250, 250, 250],
         enableLights: true,
         enableVibrate: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        lightColor: '#818cf8',
       });
     }
   };
@@ -177,14 +178,18 @@ export default function App() {
     const minutes = triggerTime.getMinutes();
     const now = new Date();
 
+
+    ///Everyday Notification
     if (category === 'Every Day') {
       // Keep this as it was working fine
       return await Notifications.scheduleNotificationAsync({
         content: {
-          title: '☀️ Hey there!',
-          body: text,
+          title: '🌙 Donezo',
+          body: `🔁 ${text}`,
           sound: 'default',
           priority: 'high',
+          color: '#818cf8',
+          sound: 'notification.mp3',
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -195,39 +200,50 @@ export default function App() {
       });
     }
 
+
+    //only today notification
     if (category === 'Today') {
       let triggerDate = new Date(triggerTime);
       // If the selected time has already passed today, schedule for tomorrow
-      if (triggerDate <= now) {
+      // if (triggerDate <= now) {
+      //   triggerDate.setDate(triggerDate.getDate() + 1);
+      // }
+
+      if (triggerDate.getTime() - now.getTime() < 60000) {
         triggerDate.setDate(triggerDate.getDate() + 1);
       }
-
       return await Notifications.scheduleNotificationAsync({
         content: {
-          title: "🪴 Don't forget!",
-          body: text,
+          title: '🌙 Donezo',
+          body: `⚡ ${text}`,
           sound: 'default',
           priority: 'high',
+          color: '#818cf8',
+          sound: 'notification.mp3',
         },
         trigger: { date: triggerDate },
       });
     }
 
+    //only someday notifcation
     if (category === 'Someday' && days.length > 0) {
       const ids = [];
       for (const d of days) {
         const id = await Notifications.scheduleNotificationAsync({
           content: {
-            title: '✨ Time for this!',
-            body: text,
+            title: '🌙 Donezo',
+            body: `🌸 ${text}`,
             sound: 'default',
             priority: 'high',
+            color: '#818cf8',
+            sound: 'notification.mp3',
           },
           trigger: {
             weekday: d + 1,
             hour: hours,
             minute: minutes,
             repeats: true,
+            channelId: 'default',
           },
         });
         ids.push(id);
