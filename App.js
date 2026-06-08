@@ -209,7 +209,7 @@ export default function App() {
           sound: 'default',
           priority: 'high',
         },
-        trigger: { date: triggerDate.getTime() },
+        trigger: { date: triggerDate },
       });
     }
 
@@ -224,8 +224,7 @@ export default function App() {
             priority: 'high',
           },
           trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-            weekday: d + 1,           // 1 = Sunday, 7 = Saturday
+            weekday: d + 1,
             hour: hours,
             minute: minutes,
             repeats: true,
